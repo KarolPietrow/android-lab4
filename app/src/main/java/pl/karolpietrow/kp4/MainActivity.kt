@@ -4,6 +4,8 @@ import android.app.Instrumentation.ActivityResult
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.app.TimePickerDialog
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -11,6 +13,7 @@ import android.graphics.BitmapFactory
 import android.os.Build
 import android.os.Bundle
 import android.provider.AlarmClock
+import android.widget.TimePicker
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -35,9 +38,12 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
+import androidx.compose.material3.TimePicker
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -55,8 +61,10 @@ import androidx.compose.ui.unit.sp
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.ContextCompat.getSystemService
+import androidx.core.content.ContextCompat.startActivity
 import kotlinx.coroutines.selects.select
 import pl.karolpietrow.kp4.ui.theme.KP4Theme
+import java.util.Locale
 
 const val channelId = "default_channel_id"
 
@@ -98,7 +106,7 @@ fun checkNotificationPermission(context: Context): Boolean {
     }
 }
 
-fun sendShortNotification(context: Context, title:String, message: String, @DrawableRes selectedIconId: Int) {
+fun sendShortNotification(context: Context, title:String, message: String, @DrawableRes selectedIconId: Int, alarmHour: Int, alarmMinute: Int) {
     val intent = Intent(context,MainActivity::class.java).apply {
         flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
     }
@@ -108,8 +116,48 @@ fun sendShortNotification(context: Context, title:String, message: String, @Draw
 
     val alarmIntent = Intent(AlarmClock.ACTION_SET_ALARM).apply {
         putExtra(AlarmClock.EXTRA_MESSAGE, "Budzik")
-        putExtra(AlarmClock.EXTRA_HOUR, 7)
-        putExtra(AlarmClock.EXTRA_MINUTES, 0)
+        putExtra(AlarmClock.EXTRA_HOUR, alarmHour)
+        putExtra(AlarmClock.EXTRA_MINUTES, alarmMinute)
+    }
+    val alarmPendingIntent = PendingIntent.getActivity(
+        context,
+        0,
+        alarmIntent,
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+    )
+
+
+    val builder = NotificationCompat.Builder(context,channelId)
+        .setSmallIcon(selectedIconId)
+        .setContentTitle(title)
+        .setContentText(message)
+        .setPriority(NotificationCompat.PRIORITY_HIGH)
+        .setContentIntent(pendingIntent)
+        .setAutoCancel(true)
+        .addAction(
+            0,
+            "Ustaw alarm",
+            alarmPendingIntent
+        )
+        .build()
+
+    val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+    notificationManager.notify(1, builder)
+}
+
+fun sendPhotoNotification(context: Context, title:String, message: String, @DrawableRes selectedIconId: Int, @DrawableRes selectedPhotoId: Int, alarmHour: Int, alarmMinute: Int) {
+    val intent = Intent(context,MainActivity::class.java).apply {
+        flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+    }
+    val pendingIntent: PendingIntent = PendingIntent.getActivity(
+        context, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+    )
+    val bitMap= BitmapFactory.decodeResource(context.resources, selectedPhotoId)
+
+    val alarmIntent = Intent(AlarmClock.ACTION_SET_ALARM).apply {
+        putExtra(AlarmClock.EXTRA_MESSAGE, "Budzik")
+        putExtra(AlarmClock.EXTRA_HOUR, alarmHour)
+        putExtra(AlarmClock.EXTRA_MINUTES, alarmMinute)
     }
     val alarmPendingIntent = PendingIntent.getActivity(
         context,
@@ -125,9 +173,13 @@ fun sendShortNotification(context: Context, title:String, message: String, @Draw
         .setPriority(NotificationCompat.PRIORITY_HIGH)
         .setContentIntent(pendingIntent)
         .setAutoCancel(true)
+        .setStyle(
+            NotificationCompat.BigPictureStyle()
+            .bigPicture(bitMap)
+        )
         .addAction(
-            R.drawable.clock1,
-            "Ustaw nowy Alarm",
+            0,
+            "Ustaw alarm",
             alarmPendingIntent
         )
         .build()
@@ -136,36 +188,38 @@ fun sendShortNotification(context: Context, title:String, message: String, @Draw
     notificationManager.notify(1, builder)
 }
 
-//fun createAlarm(message: String, hour: Int, minutes: Int) {
-//    val intent = Intent(AlarmClock.ACTION_SET_ALARM).apply {
-//        putExtra(AlarmClock.EXTRA_MESSAGE, message)
-//        putExtra(AlarmClock.EXTRA_HOUR, hour)
-//        putExtra(AlarmClock.EXTRA_MINUTES, minutes)
-//    }
-//    if (intent.resolveActivity(packageManager) != null) {
-//        startActivity(intent)
-//    }
-//}
-
-fun sendPhotoNotification(context: Context, title:String, message: String, @DrawableRes selectedIconId: Int, @DrawableRes selectedPhotoId: Int) {
+fun sendLongNotification(context: Context, title:String, shortMessage: String, @DrawableRes selectedIconId: Int, longMessage: String, alarmHour: Int, alarmMinute: Int) {
     val intent = Intent(context,MainActivity::class.java).apply {
         flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
     }
     val pendingIntent: PendingIntent = PendingIntent.getActivity(
         context, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
     )
-    val bitMap= BitmapFactory.decodeResource(context.resources, selectedPhotoId)
+
+    val alarmIntent = Intent(AlarmClock.ACTION_SET_ALARM).apply {
+        putExtra(AlarmClock.EXTRA_MESSAGE, "Budzik")
+        putExtra(AlarmClock.EXTRA_HOUR, alarmHour)
+        putExtra(AlarmClock.EXTRA_MINUTES, alarmMinute)
+    }
+    val alarmPendingIntent = PendingIntent.getActivity(
+        context,
+        0,
+        alarmIntent,
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+    )
 
     val builder = NotificationCompat.Builder(context,channelId)
         .setSmallIcon(selectedIconId)
         .setContentTitle(title)
-        .setContentText(message)
+        .setContentText(shortMessage)
+        .setStyle(NotificationCompat.BigTextStyle().bigText(longMessage))
         .setPriority(NotificationCompat.PRIORITY_HIGH)
         .setContentIntent(pendingIntent)
         .setAutoCancel(true)
-        .setStyle(
-            NotificationCompat.BigPictureStyle()
-            .bigPicture(bitMap)
+        .addAction(
+            0,
+            "Ustaw alarm",
+            alarmPendingIntent
         )
         .build()
 
@@ -173,29 +227,7 @@ fun sendPhotoNotification(context: Context, title:String, message: String, @Draw
     notificationManager.notify(1, builder)
 }
 
-fun sendLongNotification(context: Context, title:String, shortMessage: String, longMessage: String) {
-    val intent = Intent(context,MainActivity::class.java).apply {
-        flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-    }
-    val pendingIntent: PendingIntent = PendingIntent.getActivity(
-        context, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-    )
-
-    val builder = NotificationCompat.Builder(context,channelId)
-        .setSmallIcon(R.drawable.clock1)
-        .setContentTitle(title)
-        .setContentText(shortMessage)
-        .setStyle(NotificationCompat.BigTextStyle().bigText(longMessage))
-        .setPriority(NotificationCompat.PRIORITY_HIGH)
-        .setContentIntent(pendingIntent)
-        .setAutoCancel(true)
-        .build()
-
-    val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-    notificationManager.notify(1, builder)
-}
-
-
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NotificationScreen(context: Context) {
     val scrollState = rememberScrollState()
@@ -207,6 +239,19 @@ fun NotificationScreen(context: Context) {
     var showLongDescField by remember { mutableStateOf(false) }
     var showPhotoField by remember { mutableStateOf(false) }
 
+    var selectedHour by remember { mutableIntStateOf(7) }
+    var selectedMinute by remember { mutableIntStateOf(0) }
+
+    val timePickerDialog = TimePickerDialog(
+        context,
+        { _: TimePicker, hour: Int, minute: Int ->
+            selectedHour = hour
+            selectedMinute = minute
+        },
+        selectedHour,
+        selectedMinute,
+        true
+    )
 
     val requestPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -223,8 +268,10 @@ fun NotificationScreen(context: Context) {
 
     val icons = listOf(
         R.drawable.clock1,
+        R.drawable.emoji,
+        R.drawable.star,
         R.drawable.clock3
-    )
+        )
     var selectedIcon by remember { mutableIntStateOf(icons[0]) }
 
     val bigPhoto = listOf(
@@ -442,38 +489,46 @@ fun NotificationScreen(context: Context) {
                     }
                 }
             }
-            Button(
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = Color.LightGray
-                ),
-                onClick = {
-
-                }, modifier = Modifier.fillMaxWidth()) {
-                Text("Wybierz czas alarmu")
-            }
-            Spacer(modifier = Modifier.height(10.dp))
-            Button(onClick = {
-                if (titleField != "") {
-                    if (permissionGranted) {
-                        if (showLongDescField) {
-                            sendLongNotification(context, titleField, shortDescField, longDescField)
-                        } else if (showPhotoField) {
-                            sendPhotoNotification(context, titleField, shortDescField, selectedIcon, selectedBigPhoto)
-                        } else {
-                            sendShortNotification(context, titleField, shortDescField, selectedIcon)
-                        }
+        }
+        Button(
+            onClick = {
+                timePickerDialog.show()
+            }, modifier = Modifier.fillMaxWidth()) {
+            Text("Wybierz czas alarmu")
+        }
+        Text(
+            text = String.format(Locale.getDefault(), "Wybrana czas alarmu: %d:%02d", selectedHour, selectedMinute),
+            fontSize = 15.sp,
+            modifier = Modifier
+                .padding(10.dp),
+        )
+        Spacer(modifier = Modifier.height(10.dp))
+        Button(
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Color.Green,
+                contentColor = Color.Black
+            ),
+            onClick = {
+            if (titleField != "") {
+                if (permissionGranted) {
+                    if (showLongDescField) {
+                        sendLongNotification(context, titleField, shortDescField, selectedIcon, longDescField, selectedHour, selectedMinute)
+                    } else if (showPhotoField) {
+                        sendPhotoNotification(context, titleField, shortDescField, selectedIcon, selectedBigPhoto, selectedHour, selectedMinute)
                     } else {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                            requestPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-                        }
+                        sendShortNotification(context, titleField, shortDescField, selectedIcon, selectedHour, selectedMinute)
                     }
                 } else {
-                    Toast.makeText(context, "Tytuł powiadomienia jest wymagany", Toast.LENGTH_SHORT)
-                        .show()
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        requestPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                    }
                 }
-            }, modifier = Modifier.fillMaxWidth()) {
-                Text("Wyślij powiadomienie")
+            } else {
+                Toast.makeText(context, "Tytuł powiadomienia jest wymagany", Toast.LENGTH_SHORT)
+                    .show()
             }
+        }, modifier = Modifier.fillMaxWidth()) {
+            Text("Wyślij powiadomienie")
         }
     }
 }
